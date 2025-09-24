@@ -1,9 +1,8 @@
 from src.models.usuario_model import UsuarioModel
 from src.views.main_window import MainWindow
-from src.views.accidente_form_view import AccidenteFormView
 from src.controllers.accidente_controller import AccidenteController
-
-
+from src.controllers.consulta_controller import ConsultaController
+from src.controllers.reporte_controller import ReporteController
 class MainController:
     def __init__(self):
         self.usuario_actual = None
@@ -39,8 +38,10 @@ class MainController:
 
     def abrir_consulta(self):
         """Abrir módulo de consulta"""
-        print("Abriendo consultas...")
+        consulta_controller = ConsultaController(self.main_window.root)
+        consulta_controller.mostrar_ventana_consulta()
 
     def abrir_reportes(self):
         """Abrir módulo de reportes"""
-        print("Abriendo reportes...")
+        reporte_controller = ReporteController(self.main_window.root)
+        reporte_controller.mostrar_ventana_reportes()

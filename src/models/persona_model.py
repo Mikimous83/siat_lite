@@ -1,10 +1,8 @@
-from .database_connection import DatabaseConnection
 from typing import List, Dict, Optional
 
-
 class PersonaModel:
-    def __init__(self):
-        self.db = DatabaseConnection()
+    def __init__(self, db):
+        self.db = db
 
     def crear_persona(self, datos_persona: Dict) -> int:
         """Crear nueva persona asociada a un accidente"""

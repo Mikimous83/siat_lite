@@ -1,5 +1,5 @@
-from models.vehiculo_model import VehiculoModel
-from services.validation_service import ValidationService
+from src.models.vehiculo_model import VehiculoModel
+from src.services.validation_service import ValidationService
 
 
 class VehiculoController:

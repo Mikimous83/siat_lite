@@ -1,12 +1,13 @@
 from src.models.accidente_model import AccidenteModel
 from src.views.accidente_form_view import AccidenteFormView
 from src.services.validation_service import ValidationService
-
+from src.models.database_connection import DatabaseConnection
 
 class AccidenteController:
     def __init__(self, parent_window):
         self.parent_window = parent_window
-        self.accidente_model = AccidenteModel()
+        db = DatabaseConnection()
+        self.accidente_model = AccidenteModel(db)
         self.validation_service = ValidationService()
         self.current_view = None
 

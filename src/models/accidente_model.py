@@ -1,75 +1,159 @@
-from .database_connection import DatabaseConnection
-from datetime import datetime
-
+import sqlite3
 
 class AccidenteModel:
-    def __init__(self):
-        self.db = DatabaseConnection()
+    def __init__(self, db):
+        self.db = db
 
-    def crear_accidente(self, datos_accidente):
-        """Crear nuevo accidente en la base de datos"""
+    def crear_tabla(self):
         conn = self.db.get_connection()
         cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS accidentes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fecha TEXT,
+                hora TEXT,
+                distrito TEXT,
+                direccion TEXT,
+                tipo_accidente TEXT,
+                descripcion TEXT
+            )
+        ''')
+        conn.commit()
 
-        try:
-            sql = """
-            INSERT INTO accidentes (
-                numero_caso, fecha, hora, lugar, distrito, tipo_accidente,
-                gravedad, heridos, fallecidos, vehiculos_involucrados,
-                descripcion, id_usuario_registro
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
+    def insertar(self, fecha, hora, distrito, direccion, tipo_accidente, descripcion):
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO accidentes (fecha, hora, distrito, direccion, tipo_accidente, descripcion)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (fecha, hora, distrito, direccion, tipo_accidente, descripcion))
+        conn.commit()
 
-            numero_caso = self._generar_numero_caso()
+    def obtener_todos(self):
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM accidentes")
+        return cursor.fetchall()
 
-            cursor.execute(sql, (
-                numero_caso, datos_accidente['fecha'], datos_accidente['hora'],
-                datos_accidente['lugar'], datos_accidente['distrito'],
-                datos_accidente['tipo_accidente'], datos_accidente['gravedad'],
-                datos_accidente['heridos'], datos_accidente['fallecidos'],
-                datos_accidente['vehiculos_involucrados'],
-                datos_accidente['descripcion'], datos_accidente['id_usuario']
-            ))
+    def eliminar(self, accidente_id):
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM accidentes WHERE id = ?", (accidente_id,))
+        conn.commit()
 
-            conn.commit()
-            return cursor.lastrowid
+    def actualizar(self, accidente_id, fecha, hora, distrito, direccion, tipo_accidente, descripcion):
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE accidentes
+            SET fecha = ?, hora = ?, distrito = ?, direccion = ?, tipo_accidente = ?, descripcion = ?
+            WHERE id = ?
+        ''', (fecha, hora, distrito, direccion, tipo_accidente, descripcion, accidente_id))
+        conn.commit()
 
-        except Exception as e:
-            conn.rollback()
-            raise Exception(f"Error al crear accidente: {str(e)}")
+    # ========================
+    # MÉTODOS DE REPORTES
+    # ========================
 
-    def obtener_accidentes(self, filtros=None):
-        """Obtener lista de accidentes con filtros opcionales"""
+    def obtener_accidentes(self, fecha_desde=None, fecha_hasta=None, distrito=None):
+        """
+        Devuelve todos los accidentes o filtra por fechas/distrito si se pasan parámetros.
+        """
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
         sql = "SELECT * FROM accidentes WHERE 1=1"
         params = []
 
-        if filtros:
-            if filtros.get('fecha_desde'):
-                sql += " AND fecha >= ?"
-                params.append(filtros['fecha_desde'])
-            if filtros.get('fecha_hasta'):
-                sql += " AND fecha <= ?"
-                params.append(filtros['fecha_hasta'])
-            if filtros.get('tipo_accidente'):
-                sql += " AND tipo_accidente = ?"
-                params.append(filtros['tipo_accidente'])
+        if fecha_desde:
+            sql += " AND fecha >= ?"
+            params.append(fecha_desde)
+        if fecha_hasta:
+            sql += " AND fecha <= ?"
+            params.append(fecha_hasta)
+        if distrito:
+            sql += " AND distrito = ?"
+            params.append(distrito)
+
+        sql += " ORDER BY fecha ASC"
 
         cursor.execute(sql, params)
         return cursor.fetchall()
 
-    def _generar_numero_caso(self):
-        """Generar número único de caso"""
-        año = datetime.now().year
+    def obtener_estadisticas_por_distrito(self, fecha_desde=None, fecha_hasta=None, distrito=None):
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
-            SELECT COUNT(*) FROM accidentes 
-            WHERE strftime('%Y', fecha_registro) = ?
-        """, (str(año),))
+        sql = """
+        SELECT distrito, COUNT(*) as total
+        FROM accidentes
+        WHERE 1=1
+        """
+        params = []
 
-        count = cursor.fetchone()[0]
-        return f"ACC-{año}-{(count + 1):06d}"
+        if fecha_desde:
+            sql += " AND fecha >= ?"
+            params.append(fecha_desde)
+        if fecha_hasta:
+            sql += " AND fecha <= ?"
+            params.append(fecha_hasta)
+        if distrito:
+            sql += " AND distrito = ?"
+            params.append(distrito)
+
+        sql += " GROUP BY distrito ORDER BY total DESC"
+
+        cursor.execute(sql, params)
+        return cursor.fetchall()
+
+    def obtener_estadisticas_por_tipo(self, fecha_desde=None, fecha_hasta=None, distrito=None):
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+
+        sql = """
+        SELECT tipo_accidente, COUNT(*) as total
+        FROM accidentes
+        WHERE 1=1
+        """
+        params = []
+
+        if fecha_desde:
+            sql += " AND fecha >= ?"
+            params.append(fecha_desde)
+        if fecha_hasta:
+            sql += " AND fecha <= ?"
+            params.append(fecha_hasta)
+        if distrito:
+            sql += " AND distrito = ?"
+            params.append(distrito)
+
+        sql += " GROUP BY tipo_accidente ORDER BY total DESC"
+
+        cursor.execute(sql, params)
+        return cursor.fetchall()
+
+    def obtener_tendencias_temporales(self, fecha_desde=None, fecha_hasta=None, distrito=None):
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+
+        sql = """
+        SELECT strftime('%Y-%m', fecha) as mes, COUNT(*) as total
+        FROM accidentes
+        WHERE 1=1
+        """
+        params = []
+
+        if fecha_desde:
+            sql += " AND fecha >= ?"
+            params.append(fecha_desde)
+        if fecha_hasta:
+            sql += " AND fecha <= ?"
+            params.append(fecha_hasta)
+        if distrito:
+            sql += " AND distrito = ?"
+            params.append(distrito)
+
+        sql += " GROUP BY mes ORDER BY mes ASC"
+
+        cursor.execute(sql, params)
+        return cursor.fetchall()

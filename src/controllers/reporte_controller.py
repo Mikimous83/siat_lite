@@ -2,14 +2,18 @@ from src.models.accidente_model import AccidenteModel
 from src.models.persona_model import PersonaModel
 from src.services.export_service import ExportService
 from datetime import datetime, timedelta
+from src.models.database_connection import DatabaseConnection
 import calendar
 
 
 class ReporteController:
     def __init__(self, parent_window):
         self.parent_window = parent_window
-        self.accidente_model = AccidenteModel()
-        self.persona_model = PersonaModel()
+
+        # ✅ Crear conexión una sola vez y compartirla con los modelos
+        db = DatabaseConnection()
+        self.accidente_model = AccidenteModel(db)
+        self.persona_model = PersonaModel(db)  # ✅ corregido
         self.export_service = ExportService()
         self.current_view = None
 
@@ -47,6 +51,7 @@ class ReporteController:
         except Exception as e:
             if self.current_view:
                 from ttkbootstrap.dialogs import Messagebox
+                print(f"Error al generar reporte: {str(e)}")
                 Messagebox.show_error("Error", f"Error al generar reporte: {str(e)}")
 
     def _calcular_periodo(self, periodo):
@@ -66,17 +71,17 @@ class ReporteController:
 
     def _obtener_metricas_generales(self, fecha_desde, fecha_hasta):
         """Obtener métricas generales del período"""
-        filtros = {
-            'fecha_desde': fecha_desde.strftime('%Y-%m-%d'),
-            'fecha_hasta': fecha_hasta.strftime('%Y-%m-%d')
-        }
-
-        # Obtener accidentes del período
-        accidentes = self.accidente_model.obtener_accidentes(filtros)
+        accidentes = self.accidente_model.obtener_accidentes(
+            fecha_desde.strftime('%Y-%m-%d'),
+            fecha_hasta.strftime('%Y-%m-%d')
+        )
 
         total_accidentes = len(accidentes)
-        total_heridos = sum(acc[11] or 0 for acc in accidentes)
-        total_fallecidos = sum(acc[12] or 0 for acc in accidentes)
+
+        # ⚠️ Tu tabla no tiene columnas de heridos/fallecidos,
+        # así que para que no falle ponemos 0 por ahora
+        total_heridos = 0
+        total_fallecidos = 0
 
         return {
             'total_accidentes': total_accidentes,

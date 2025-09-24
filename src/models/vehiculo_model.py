@@ -3,8 +3,8 @@ from typing import List, Dict, Optional
 
 
 class VehiculoModel:
-    def __init__(self):
-        self.db = DatabaseConnection()
+    def __init__(self,db):
+        self.db = db
 
     def crear_vehiculo(self, datos_vehiculo: Dict) -> int:
         """Crear nuevo vehículo asociado a un accidente"""
