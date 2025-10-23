@@ -1,98 +1,72 @@
-from models.usuario_model import UsuarioModel
-from services.validation_service import ValidationService
-from ttkbootstrap.dialogs import Messagebox
-
+# src/controllers/usuario_controller.py
+import secrets
+from src.models.usuario_model import UsuarioModel
+from src.utils.email_service import EmailService
 
 class UsuarioController:
-    def __init__(self):
-        self.usuario_model = UsuarioModel()
-        self.validation_service = ValidationService()
-        self.usuario_actual = None
+    def __init__(self, db_path: str, public_base_url: str = "http://localhost"):
+        self.model = UsuarioModel(db_path)
+        self.mailer = EmailService()
+        self.public_base_url = public_base_url.rstrip("/")
 
-    def autenticar_usuario(self, email, password):
-        """Autenticar usuario"""
-        try:
-            usuario = self.usuario_model.autenticar_usuario(email, password)
-            if usuario:
-                self.usuario_actual = {
-                    'id': usuario[0],
-                    'nombre': usuario[1],
-                    'apellido': usuario[2],
-                    'nivel_acceso': usuario[3],
-                    'nombre_completo': f"{usuario[1]} {usuario[2]}"
-                }
+    # ---------- Registro ----------
+    def registrar(self, nombre, apellido, email, password, id_rol=None):
+        if self.model.existe_email(email):
+            return False, "El correo ya está registrado."
+        user_id = self.model.crear_usuario(nombre, apellido, email, password, id_rol)
+        token = secrets.token_urlsafe(24)
+        self.model.crear_token(email, token, tipo="confirm", minutos_validez=60*24)  # 24h
 
-                # Actualizar último acceso
-                self.usuario_model.actualizar_ultimo_acceso(usuario[0])
-                return True
-            return False
+        link = f"{self.public_base_url}/siatlite/php_server/confirmar.php?token={token}"
+        html = f"""
+        <h3>Confirma tu cuenta</h3>
+        <p>Hola {nombre},</p>
+        <p>Gracias por registrarte. Confirma tu cuenta dando clic en el siguiente enlace:</p>
+        <p><a href="{link}" target="_blank">Confirmar cuenta</a></p>
+        <p>Si no fuiste tú, ignora este correo.</p>
+        """
+        self.mailer.enviar_correo(email, "Confirma tu cuenta - SIATLITE", html, "Confirma tu cuenta: " + link)
+        return True, "Registro exitoso. Revisa tu correo para confirmar tu cuenta."
 
-        except Exception as e:
-            print(f"Error en autenticación: {str(e)}")
-            return False
+    # ---------- Confirmación ----------
+    def confirmar(self, token: str):
+        email = self.model.consumir_token(token, tipo="confirm")
+        if not email:
+            return False, "Token inválido o expirado."
+        self.model.activar_usuario(email)
+        return True, f"Cuenta {email} confirmada."
 
-    def crear_usuario(self, datos_usuario):
-        """Crear nuevo usuario"""
-        try:
-            # Validar permisos
-            if not self._tiene_permisos_admin():
-                Messagebox.show_error("Error", "No tiene permisos para crear usuarios")
-                return False
+    # ---------- Login ----------
+    def login(self, email, password):
+        user = self.model.verificar_credenciales(email, password)
+        if not user:
+            return False, "Credenciales inválidas."
+        if user[4] == 0:
+            return False, "Cuenta no confirmada. Revisa tu correo."
+        return True, {"id_usuario": user[0], "nombre": user[1], "apellido": user[2], "email": user[3]}
 
-            # Validar datos
-            errores = self.validation_service.validar_usuario(datos_usuario)
-            if errores:
-                self._mostrar_errores(errores)
-                return False
+    # ---------- Recuperación (envío de link) ----------
+    def solicitar_reset(self, email: str):
+        if not self.model.existe_email(email):
+            return False, "Correo no registrado."
 
-            # Crear usuario
-            id_usuario = self.usuario_model.crear_usuario(datos_usuario)
-            Messagebox.show_info("Éxito", f"Usuario creado con ID: {id_usuario}")
-            return True
+        token = secrets.token_urlsafe(24)
+        self.model.crear_token(email, token, tipo="reset", minutos_validez=30)  # 30 minutos
 
-        except Exception as e:
-            Messagebox.show_error("Error", f"Error al crear usuario: {str(e)}")
-            return False
+        link = f"{self.public_base_url}/siatlite/php_server/restablecer.php?token={token}"
+        html = f"""
+        <h3>Restablecer contraseña</h3>
+        <p>Solicitaste restablecer tu contraseña. Usa este enlace:</p>
+        <p><a href="{link}" target="_blank">Restablecer contraseña</a></p>
+        <p>Este enlace expira en 30 minutos. Si no fuiste tú, ignora este mensaje.</p>
+        """
+        self.mailer.enviar_correo(email, "Restablece tu contraseña - SIATLITE", html, "Restablece tu contraseña: " + link)
+        return True, "Se envió un enlace de recuperación a tu correo."
 
-    def obtener_usuarios_activos(self):
-        """Obtener lista de usuarios activos"""
-        try:
-            return self.usuario_model.obtener_usuarios_activos()
-        except Exception as e:
-            print(f"Error al obtener usuarios: {str(e)}")
-            return []
-
-    def cambiar_password(self, password_actual, password_nueva):
-        """Cambiar contraseña del usuario actual"""
-        try:
-            if not self.usuario_actual:
-                return False
-
-            # Verificar contraseña actual
-            if not self.usuario_model.verificar_password(self.usuario_actual['id'], password_actual):
-                Messagebox.show_error("Error", "Contraseña actual incorrecta")
-                return False
-
-            # Validar nueva contraseña
-            if len(password_nueva) < 6:
-                Messagebox.show_error("Error", "La contraseña debe tener al menos 6 caracteres")
-                return False
-
-            # Actualizar contraseña
-            if self.usuario_model.actualizar_password(self.usuario_actual['id'], password_nueva):
-                Messagebox.show_info("Éxito", "Contraseña actualizada correctamente")
-                return True
-            return False
-
-        except Exception as e:
-            Messagebox.show_error("Error", f"Error al cambiar contraseña: {str(e)}")
-            return False
-
-    def _tiene_permisos_admin(self):
-        """Verificar si el usuario actual tiene permisos de administrador"""
-        return self.usuario_actual and self.usuario_actual['nivel_acceso'] == 'administrador'
-
-    def _mostrar_errores(self, errores):
-        """Mostrar errores de validación"""
-        mensaje = "\\n".join(errores)
-        Messagebox.show_error("Errores de Validación", mensaje)
+    # ---------- Aplicar nueva contraseña (desde token) ----------
+    def aplicar_reset(self, token: str, new_password: str):
+        email = self.model.consumir_token(token, tipo="reset")
+        if not email:
+            return False, "Token inválido o expirado."
+        self.model.cambiar_password(email, new_password)
+        return True, "Contraseña actualizada correctamente."

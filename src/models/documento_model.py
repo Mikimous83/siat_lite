@@ -1,77 +1,153 @@
-from .database_connection import DatabaseConnection
 import os
 import shutil
-from typing import List, Dict, Optional
+import sqlite3
+from typing import List, Dict
+from datetime import datetime
 
 
 class DocumentoModel:
-    def __init__(self):
-        self.db = DatabaseConnection()
-        self.base_path = "data/documentos"
+    """Modelo para la tabla documentos"""
+
+    def __init__(self, conn: sqlite3.Connection):
+        """Recibe una conexión SQLite (desde DataService)"""
+        self.conn = conn
+
+        # 📁 Carpeta base: docs/ (al mismo nivel que data/)
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        self.base_path = os.path.join(base_dir, 'docs')
         self._ensure_directories()
 
+    # ------------------------------------------------------
+    # 🔧 UTILIDADES
+    # ------------------------------------------------------
+
     def _ensure_directories(self):
-        """Crear directorios necesarios"""
+        """Crea las subcarpetas dentro de /docs."""
         os.makedirs(self.base_path, exist_ok=True)
         for tipo in ['fotos', 'croquis', 'informes', 'otros']:
             os.makedirs(os.path.join(self.base_path, tipo), exist_ok=True)
 
-    def subir_documento(self, id_accidente: int, archivo_origen: str,
-                        tipo_documento: str, id_usuario: int) -> int:
-        """Subir documento y registrar en BD"""
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
+    # ------------------------------------------------------
+    # 📂 SUBIR DOCUMENTO
+    # ------------------------------------------------------
+
+    def subir(self, id_accidente: int, archivo_origen: str, tipo_documento: str, id_usuario: int) -> int:
+        """Sube un archivo físico a /docs y lo registra en la base de datos."""
+        cursor = self.conn.cursor()
 
         try:
-            # Generar nombre único
+            # ✅ Nombre único del archivo
             nombre_archivo = os.path.basename(archivo_origen)
-            extension = os.path.splitext(nombre_archivo)[1]
-            nombre_unico = f"{id_accidente}_{tipo_documento}_{id_usuario}_{nombre_archivo}"
+            nombre_sin_ext, extension = os.path.splitext(nombre_archivo)
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            nombre_unico = f"{id_accidente}_{tipo_documento}_{id_usuario}_{timestamp}{extension}"
 
-            # Determinar ruta destino
-            ruta_destino = os.path.join(self.base_path, tipo_documento, nombre_unico)
+            # ✅ Determinar carpeta destino
+            carpeta_tipo = tipo_documento.lower()
+            if carpeta_tipo not in ['fotos', 'croquis', 'informes']:
+                carpeta_tipo = 'otros'
 
-            # Copiar archivo
+            ruta_destino = os.path.join(self.base_path, carpeta_tipo, nombre_unico)
+
+            # ✅ Copiar archivo
             shutil.copy2(archivo_origen, ruta_destino)
 
-            # Obtener tamaño
+            # ✅ Calcular tamaño y fecha
             tamaño_kb = os.path.getsize(ruta_destino) // 1024
+            fecha_subida = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # Registrar en BD
-            sql = """
-            INSERT INTO documentos (
-                id_accidente, tipo_documento, nombre_archivo, 
-                ruta_archivo, tamaño_kb, subido_por
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """
+            # ✅ Insertar en la base de datos
+            cursor.execute(
+                """
+                INSERT INTO documentos (
+                    id_accidente, id_tipo_doc, nombre_archivo,
+                    ruta_archivo, tamaño_kb, fecha_subida, subido_por
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (id_accidente, None, nombre_unico, ruta_destino, tamaño_kb, fecha_subida, id_usuario),
+            )
 
-            cursor.execute(sql, (
-                id_accidente, tipo_documento, nombre_unico,
-                ruta_destino, tamaño_kb, id_usuario
-            ))
-
-            conn.commit()
+            self.conn.commit()
             return cursor.lastrowid
 
         except Exception as e:
-            conn.rollback()
-            # Eliminar archivo si falló la BD
-            if os.path.exists(ruta_destino):
+            self.conn.rollback()
+            if 'ruta_destino' in locals() and os.path.exists(ruta_destino):
                 os.remove(ruta_destino)
             raise Exception(f"Error al subir documento: {str(e)}")
 
-    def obtener_documentos_accidente(self, id_accidente: int) -> List[Dict]:
-        """Obtener todos los documentos de un accidente"""
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
+    # ------------------------------------------------------
+    # 📄 CONSULTAS
+    # ------------------------------------------------------
 
-        cursor.execute("""
-            SELECT d.*, u.nombre, u.apellido
-            FROM documentos d
-            LEFT JOIN usuarios u ON d.subido_por = u.id_usuario
-            WHERE d.id_accidente = ?
-            ORDER BY d.fecha_subida DESC
-        """, (id_accidente,))
+    def listar(self, id_accidente: int | None = None) -> List[Dict]:
+        """Obtiene los documentos asociados a un accidente (o todos)."""
+        cursor = self.conn.cursor()
+        if id_accidente:
+            cursor.execute(
+                """
+                SELECT d.*, u.nombre AS usuario_nombre, u.apellido AS usuario_apellido
+                FROM documentos d
+                LEFT JOIN usuarios u ON d.subido_por = u.id_usuario
+                WHERE d.id_accidente = ?
+                ORDER BY d.fecha_subida DESC
+                """,
+                (id_accidente,),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT d.*, u.nombre AS usuario_nombre, u.apellido AS usuario_apellido
+                FROM documentos d
+                LEFT JOIN usuarios u ON d.subido_por = u.id_usuario
+                ORDER BY d.fecha_subida DESC
+                """
+            )
 
-        documentos = cursor.fetchall()
-        return [self._dict_from_row(doc) for doc in documentos]
+        filas = cursor.fetchall()
+        return [self._dict_from_row(row, cursor) for row in filas]
+
+    def obtener(self, id_documento: int) -> Dict:
+        """Obtiene un documento por ID"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM documentos WHERE id_documento = ?", (id_documento,))
+        row = cursor.fetchone()
+        return self._dict_from_row(row, cursor) if row else {}
+
+    # ------------------------------------------------------
+    # ❌ ELIMINAR
+    # ------------------------------------------------------
+
+    def eliminar(self, id_documento: int) -> bool:
+        """Elimina un documento físico y su registro."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT ruta_archivo FROM documentos WHERE id_documento = ?", (id_documento,))
+        fila = cursor.fetchone()
+
+        if not fila:
+            return False
+
+        ruta_archivo = fila[0]
+
+        try:
+            cursor.execute("DELETE FROM documentos WHERE id_documento = ?", (id_documento,))
+            self.conn.commit()
+
+            if os.path.exists(ruta_archivo):
+                os.remove(ruta_archivo)
+
+            return True
+        except Exception as e:
+            self.conn.rollback()
+            raise Exception(f"Error al eliminar documento: {str(e)}")
+
+    # ------------------------------------------------------
+    # 🔧 Helper
+    # ------------------------------------------------------
+
+    def _dict_from_row(self, row, cursor) -> Dict:
+        """Convierte una fila en diccionario."""
+        if not row:
+            return {}
+        columnas = [desc[0] for desc in cursor.description]
+        return dict(zip(columnas, row))

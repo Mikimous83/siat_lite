@@ -1,76 +1,124 @@
-from .database_connection import DatabaseConnection
-from typing import List, Dict, Optional
-
+from typing import List, Dict
 
 class VehiculoModel:
-    def __init__(self,db):
+    def __init__(self, db):
         self.db = db
 
-    def crear_vehiculo(self, datos_vehiculo: Dict) -> int:
-        """Crear nuevo vehículo asociado a un accidente"""
+    # =====================================================
+    # 🔹 CREAR VEHÍCULO
+    # =====================================================
+    def crear_vehiculo(self, datos: Dict) -> int:
+        """Registrar un vehículo asociado a un accidente."""
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
         try:
+            # Verificar existencia del accidente
+            cursor.execute("SELECT COUNT(*) FROM accidentes WHERE id_accidente = ?", (datos["id_accidente"],))
+            if cursor.fetchone()[0] == 0:
+                raise Exception(f"❌ No existe un accidente con ID {datos['id_accidente']}")
+
+            # Insertar vehículo
             sql = """
             INSERT INTO vehiculos (
-                id_accidente, tipo_vehiculo, marca, modelo, placa, año, color,
-                numero_motor, numero_chasis, seguro_soat, estado_vehiculo,
-                daños_descripcion, conductor_nombre, conductor_apellido,
-                conductor_dni, conductor_licencia, conductor_telefono,
-                propietario_nombre, propietario_dni
+                id_accidente, id_tipo_vehiculo, id_aseguradora, tipo_vehiculo, marca, modelo, placa,
+                anio, color, numero_motor, numero_chasis, estado_vehiculo, daños_descripcion,
+                conductor_nombre, conductor_apellido, conductor_dni, conductor_licencia,
+                conductor_telefono, propietario_nombre
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
 
             cursor.execute(sql, (
-                datos_vehiculo['id_accidente'], datos_vehiculo['tipo_vehiculo'],
-                datos_vehiculo['marca'], datos_vehiculo['modelo'],
-                datos_vehiculo['placa'], datos_vehiculo.get('año'),
-                datos_vehiculo.get('color'), datos_vehiculo.get('numero_motor'),
-                datos_vehiculo.get('numero_chasis'), datos_vehiculo.get('seguro_soat'),
-                datos_vehiculo.get('estado_vehiculo'), datos_vehiculo.get('daños_descripcion'),
-                datos_vehiculo['conductor_nombre'], datos_vehiculo['conductor_apellido'],
-                datos_vehiculo['conductor_dni'], datos_vehiculo.get('conductor_licencia'),
-                datos_vehiculo.get('conductor_telefono'), datos_vehiculo.get('propietario_nombre'),
-                datos_vehiculo.get('propietario_dni')
+                datos["id_accidente"],
+                datos.get("id_tipo_vehiculo"),
+                datos.get("id_aseguradora"),
+                datos.get("tipo_vehiculo"),
+                datos.get("marca"),
+                datos.get("modelo"),
+                datos.get("placa"),
+                datos.get("anio"),
+                datos.get("color"),
+                datos.get("numero_motor"),
+                datos.get("numero_chasis"),
+                datos.get("estado_vehiculo"),
+                datos.get("daños_descripcion"),
+                datos.get("conductor_nombre"),
+                datos.get("conductor_apellido"),
+                datos.get("conductor_dni"),
+                datos.get("conductor_licencia"),
+                datos.get("conductor_telefono"),
+                datos.get("propietario_nombre")
             ))
 
             conn.commit()
+            print(f"✅ Vehículo registrado correctamente (Accidente ID {datos['id_accidente']})")
             return cursor.lastrowid
 
         except Exception as e:
             conn.rollback()
-            raise Exception(f"Error al crear vehículo: {str(e)}")
+            raise Exception(f"Error al registrar vehículo: {str(e)}")
 
-    def obtener_vehiculos_por_accidente(self, id_accidente: int) -> List[Dict]:
-        """Obtener todos los vehículos de un accidente"""
+    # =====================================================
+    # 🔹 OBTENER VEHÍCULOS POR ACCIDENTE
+    # =====================================================
+    def obtener_por_accidente(self, id_accidente: int) -> List[Dict]:
         conn = self.db.get_connection()
         cursor = conn.cursor()
-
         cursor.execute("""
-            SELECT * FROM vehiculos WHERE id_accidente = ?
+            SELECT * FROM vehiculos 
+            WHERE id_accidente = ?
+            ORDER BY tipo_vehiculo, marca
         """, (id_accidente,))
+        rows = cursor.fetchall()
+        return [self._dict_from_row(cursor, r) for r in rows]
 
-        vehiculos = cursor.fetchall()
-        return [self._dict_from_row(v) for v in vehiculos]
+    # =====================================================
+    # 🔹 OBTENER VEHÍCULO POR ID
+    # =====================================================
+    def obtener_por_id(self, id_vehiculo: int) -> Dict:
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM vehiculos WHERE id_vehiculo = ?", (id_vehiculo,))
+        row = cursor.fetchone()
+        return self._dict_from_row(cursor, row) if row else {}
 
+    # =====================================================
+    # 🔹 ACTUALIZAR VEHÍCULO
+    # =====================================================
     def actualizar_vehiculo(self, id_vehiculo: int, datos: Dict) -> bool:
-        """Actualizar datos de un vehículo"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
         try:
             sql = """
             UPDATE vehiculos SET
-                tipo_vehiculo = ?, marca = ?, modelo = ?, placa = ?,
-                año = ?, color = ?, estado_vehiculo = ?, daños_descripcion = ?
+                id_tipo_vehiculo = ?, id_aseguradora = ?, tipo_vehiculo = ?, marca = ?, modelo = ?, 
+                placa = ?, anio = ?, color = ?, numero_motor = ?, numero_chasis = ?, 
+                estado_vehiculo = ?, daños_descripcion = ?, conductor_nombre = ?, 
+                conductor_apellido = ?, conductor_dni = ?, conductor_licencia = ?, 
+                conductor_telefono = ?, propietario_nombre = ?
             WHERE id_vehiculo = ?
             """
 
             cursor.execute(sql, (
-                datos['tipo_vehiculo'], datos['marca'], datos['modelo'],
-                datos['placa'], datos.get('año'), datos.get('color'),
-                datos.get('estado_vehiculo'), datos.get('daños_descripcion'),
+                datos.get("id_tipo_vehiculo"),
+                datos.get("id_aseguradora"),
+                datos.get("tipo_vehiculo"),
+                datos.get("marca"),
+                datos.get("modelo"),
+                datos.get("placa"),
+                datos.get("anio"),
+                datos.get("color"),
+                datos.get("numero_motor"),
+                datos.get("numero_chasis"),
+                datos.get("estado_vehiculo"),
+                datos.get("daños_descripcion"),
+                datos.get("conductor_nombre"),
+                datos.get("conductor_apellido"),
+                datos.get("conductor_dni"),
+                datos.get("conductor_licencia"),
+                datos.get("conductor_telefono"),
+                datos.get("propietario_nombre"),
                 id_vehiculo
             ))
 
@@ -81,34 +129,39 @@ class VehiculoModel:
             conn.rollback()
             raise Exception(f"Error al actualizar vehículo: {str(e)}")
 
+    # =====================================================
+    # 🔹 ELIMINAR VEHÍCULO
+    # =====================================================
     def eliminar_vehiculo(self, id_vehiculo: int) -> bool:
-        """Eliminar vehículo"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
-
-        cursor.execute("DELETE FROM vehiculos WHERE id_vehiculo = ?", (id_vehiculo,))
-        conn.commit()
-        return cursor.rowcount > 0
-
-    def buscar_por_placa(self, placa: str) -> Optional[Dict]:
-        """Buscar vehículo por placa"""
+        try:
+            cursor.execute("DELETE FROM vehiculos WHERE id_vehiculo = ?", (id_vehiculo,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            raise Exception(f"Error al eliminar vehículo: {str(e)}")
+    # =====================================================
+    # 🔹 BUSCAR PERSONA
+    # =====================================================
+    def buscar_persona_por_dni(self, dni: str) -> dict:
+        """Busca en la tabla personas un registro por DNI."""
         conn = self.db.get_connection()
         cursor = conn.cursor()
-
         cursor.execute("""
-            SELECT v.*, a.numero_caso, a.fecha 
-            FROM vehiculos v
-            JOIN accidentes a ON v.id_accidente = a.id_accidente
-            WHERE v.placa = ?
-        """, (placa,))
+            SELECT id_persona, nombre, apellido, dni, telefono
+            FROM personas
+            WHERE dni = ?
+        """, (dni,))
+        row = cursor.fetchone()
+        return self._dict_from_row(cursor, row) if row else {}
 
-        result = cursor.fetchone()
-        return self._dict_from_row(result) if result else None
-
-    def _dict_from_row(self, row) -> Dict:
-        """Convertir fila de BD a diccionario"""
+    # =====================================================
+    # 🔹 UTILIDAD: convertir fila en dict
+    # =====================================================
+    def _dict_from_row(self, cursor, row) -> Dict:
         if not row:
             return {}
-
-        columns = [desc[0] for desc in self.db.get_connection().cursor().description]
-        return dict(zip(columns, row))
+        cols = [desc[0] for desc in cursor.description]
+        return dict(zip(cols, row))
