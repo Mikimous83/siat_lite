@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
+import sys
 
 # Importa tus vistas
 from src.ui.views.dashboard_view import DashboardView
@@ -15,15 +16,17 @@ from src.ui.views.personas_view import PersonasView
 from src.ui.views.vehiculos_view import VehiculosView
 from src.ui.views.reportes_view import ReportesView
 from src.ui.views.configuracion_view import ConfiguracionView
-from src.ui.views.usuario_view import UsuarioRegisterView   # ✅ vista de registro
+from src.ui.views.usuario_view import UsuarioRegisterView  # ✅ vista de registro
 
 # Conexión a la base
 from src.models.database_connection import DatabaseConnection
+from src.ui.views.login_view import LoginView  # ✅ para reabrir login al cerrar sesión
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, usuario_activo=None):
         super().__init__()
+        self.usuario_activo = usuario_activo  # 👈 guarda los datos del login
         self.setWindowTitle("SIATLITE - Sistema de Accidentes de Tránsito")
         self.setGeometry(100, 100, 1400, 900)
         self.setMinimumSize(1200, 700)
@@ -108,7 +111,7 @@ class MainWindow(QMainWindow):
         self.btn_vehiculos = self.create_menu_button("🚗 Vehículos")
         self.btn_reportes = self.create_menu_button("📈 Reportes")
         self.btn_config = self.create_menu_button("⚙️ Configuración")
-        self.btn_usuarios = self.create_menu_button("👤 Usuarios")  # ✅ nueva vista
+        self.btn_usuarios = self.create_menu_button("👤 Usuarios")
 
         # Conectar señales
         self.btn_dashboard.clicked.connect(self.show_dashboard)
@@ -119,7 +122,7 @@ class MainWindow(QMainWindow):
         self.btn_config.clicked.connect(self.show_configuracion)
         self.btn_usuarios.clicked.connect(self.show_usuarios)
 
-        # Agregar botones al layout
+        # Agregar botones
         layout.addWidget(self.btn_dashboard)
         layout.addWidget(self.btn_accidentes)
         layout.addWidget(self.btn_personas)
@@ -130,7 +133,7 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
 
-        # Pie de usuario
+        # Pie de usuario dinámico
         user_frame = QFrame()
         user_frame.setStyleSheet("""
             QFrame {
@@ -140,11 +143,20 @@ class MainWindow(QMainWindow):
             }
         """)
         user_layout = QVBoxLayout(user_frame)
-        user_label = QLabel("👤 Usuario: Admin")
+
+        nombre = self.usuario_activo.get("nombre", "Invitado")
+        apellido = self.usuario_activo.get("apellido", "")
+        email = self.usuario_activo.get("email", "")
+        rol = self.usuario_activo.get("rol", "Usuario")
+
+        user_label = QLabel(f"👤 Usuario: {nombre} {apellido}")
         user_label.setStyleSheet("font-weight: bold; font-size: 10pt;")
 
-        role_label = QLabel("Rol: Administrador")
+        role_label = QLabel(f"Rol: {rol}")
         role_label.setStyleSheet("font-size: 9pt; color: #9A9A9A;")
+
+        email_label = QLabel(f"📧 {email}")
+        email_label.setStyleSheet("font-size: 8pt; color: #AAAAAA;")
 
         btn_logout = QPushButton("🚪 Cerrar Sesión")
         btn_logout.setObjectName("btnDanger")
@@ -153,6 +165,7 @@ class MainWindow(QMainWindow):
 
         user_layout.addWidget(user_label)
         user_layout.addWidget(role_label)
+        user_layout.addWidget(email_label)
         user_layout.addSpacing(10)
         user_layout.addWidget(btn_logout)
 
@@ -208,12 +221,10 @@ class MainWindow(QMainWindow):
         self.reportes_view = ReportesView()
         self.configuracion_view = ConfiguracionView()
 
-        # ✅ Nueva vista de registro/usuarios
-        db_path = r"D:\programacion\python\avanzada\IIICICLO\siatlite\data\siatlite.db"
+        db_path = r"D:\programacion\python\avanzada\IIICICICLO\siatlite\data\siatlite.db"
         public_base_url = "http://localhost"
         self.usuarios_view = UsuarioRegisterView(db_path, public_base_url)
 
-        # Añadir al stack
         for view in [
             self.dashboard_view, self.accidentes_view, self.personas_view,
             self.vehiculos_view, self.reportes_view, self.configuracion_view,
@@ -225,7 +236,6 @@ class MainWindow(QMainWindow):
     # NAVEGACIÓN
     # =====================================================
     def uncheck_all_menu_buttons(self):
-        """Desmarca todos los botones del menú"""
         for btn in [
             self.btn_dashboard, self.btn_accidentes, self.btn_personas,
             self.btn_vehiculos, self.btn_reportes, self.btn_config,
@@ -270,7 +280,6 @@ class MainWindow(QMainWindow):
         self.content_stack.setCurrentWidget(self.configuracion_view)
 
     def show_usuarios(self):
-        """✅ Nueva vista de usuarios / registro"""
         self.uncheck_all_menu_buttons()
         self.btn_usuarios.setChecked(True)
         self.section_title.setText("👤 Gestión de Usuarios")
@@ -295,4 +304,15 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            self.close()
+            self.hide()
+            self.reabrir_login()
+
+    def reabrir_login(self):
+        """Reabre la ventana de login sin cerrar la app"""
+        login = LoginView(r"D:\programacion\python\avanzada\IIICICLO\siatlite\data\siatlite.db")
+        if login.exec() == login.DialogCode.Accepted:
+            usuario = login.usuario_autenticado
+            self.__init__(usuario)
+            self.show()
+        else:
+            sys.exit(0)

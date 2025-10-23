@@ -25,6 +25,18 @@ class UsuarioModel:
             """, (nombre, apellido, email.lower(), password_hash, id_rol))
             return cur.lastrowid
 
+    def obtener_rol_usuario(self, id_usuario):
+        with self._conn() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT r.nombre_rol
+                FROM usuarios u
+                LEFT JOIN roles r ON u.id_rol = r.id_rol
+                WHERE u.id_usuario = ?
+            """, (id_usuario,))
+            row = cur.fetchone()
+            return row[0] if row else None
+
     def activar_usuario(self, email: str):
         with self._conn() as conn:
             conn.execute("UPDATE usuarios SET activo = 1 WHERE LOWER(email) = ?", (email.lower(),))

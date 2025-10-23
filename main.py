@@ -33,13 +33,12 @@ def main():
     print("🧭 [DEBUG] Resultado del exec():", result)
 
     if result == QDialog.DialogCode.Accepted:
-        print("✅ Login aceptado, abriendo MainWindow...")
-        window = MainWindow()
+        usuario_activo = login.usuario_autenticado  # <-- obtenido del login
+        print("✅ Login aceptado, abriendo MainWindow con:", usuario_activo)
+
+        window = MainWindow(usuario_activo)
         window.show()
         sys.exit(app.exec())
-    else:
-        print("❌ Login cancelado o fallido.")
-        sys.exit(0)
 
 
 if __name__ == '__main__':

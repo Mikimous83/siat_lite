@@ -256,28 +256,26 @@ class LoginView(QDialog):
         self.login_thread.start()
 
     def on_login_completado(self, ok, result):
-        """Callback del hilo de login"""
-        print("🧠 [MAIN THREAD] Resultado del login:", ok, result)
-
-        # Restaurar interfaz
+        """Callback cuando se completa el login"""
         self.progress.setVisible(False)
         self.btn_login.setEnabled(True)
-        self.btn_create.setEnabled(True)
         self.inp_email.setEnabled(True)
         self.inp_pass.setEnabled(True)
 
         if not ok:
-            QMessageBox.warning(self, "❌ Error de inicio", str(result))
+            QMessageBox.critical(self, "❌ Error de Autenticación", str(result))
             return
+
+        # ✅ Guardar el usuario autenticado para usarlo en MainWindow
+        self.usuario_autenticado = result
 
         QMessageBox.information(
             self,
             "✅ Bienvenido",
-            f"Hola {result.get('nombre', 'Usuario')} 👋\nAcceso concedido al sistema."
+            f"¡Hola {result.get('nombre', 'Usuario')} 👋!\n\nAcceso concedido al sistema."
         )
 
-        # Retrasar cierre para evitar colisión con el hilo
-        QTimer.singleShot(300, lambda: self.done(1))
+        self.accept()
 
     def recuperar_password(self, link=None):
         """Envía enlace de recuperación por correo"""

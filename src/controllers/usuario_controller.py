@@ -38,16 +38,19 @@ class UsuarioController:
 
     # ---------- Login ----------
     def login(self, email, password):
-        """Evalúa credenciales y devuelve (ok, resultado/mensaje)."""
         user = self.model.verificar_credenciales(email, password)
         if not user:
             return False, "Credenciales inválidas o usuario no activo."
+
+        # obtener nombre de rol si existe
+        rol = self.model.obtener_rol_usuario(user[0])
 
         return True, {
             "id_usuario": user[0],
             "nombre": user[1],
             "apellido": user[2],
-            "email": user[3]
+            "email": user[3],
+            "rol": rol or "Usuario"
         }
 
     # ---------- Recuperación (envío de link) ----------
