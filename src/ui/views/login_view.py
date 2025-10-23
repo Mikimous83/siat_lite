@@ -8,9 +8,10 @@ from src.controllers.usuario_controller import UsuarioController
 from src.ui.views.usuario_view import UsuarioRegisterView
 
 
+from PyQt6.QtCore import QThread, pyqtSignal, QTimer
+
 class LoginWorker(QThread):
-    """Thread para no bloquear la UI durante login"""
-    login_resultado = pyqtSignal(bool, dict)
+    login_resultado = pyqtSignal(bool, object)  # object permite dict o str
 
     def __init__(self, controller, email, password):
         super().__init__()
@@ -19,8 +20,13 @@ class LoginWorker(QThread):
         self.password = password
 
     def run(self):
-        ok, result = self.controller.login(self.email, self.password)
-        self.login_resultado.emit(ok, result)
+        try:
+            print("🧩 [HILO] Verificando credenciales en segundo plano...")
+            ok, result = self.controller.login(self.email, self.password)
+            self.login_resultado.emit(ok, result)
+        except Exception as e:
+            print("❌ [HILO] Error en LoginWorker:", e)
+            self.login_resultado.emit(False, f"Error interno: {e}")
 
 
 class LoginView(QDialog):
@@ -229,40 +235,49 @@ class LoginView(QDialog):
         main_layout.addWidget(self.link_reset)
 
     def iniciar_sesion(self):
-        """Inicia sesión en thread separado para no bloquear UI"""
+        """Inicia sesión en hilo seguro y muestra progreso"""
         email = self.inp_email.text().strip()
         password = self.inp_pass.text().strip()
 
         if not email or not password:
-            QMessageBox.warning(self, "⚠️ Campos incompletos",
-                                "Por favor, ingresa tu correo y contraseña.")
+            QMessageBox.warning(self, "Campos incompletos", "Por favor, ingresa tu correo y contraseña.")
             return
 
-        # Mostrar progreso
+        print("🚀 Iniciando sesión con:", email)
         self.progress.setVisible(True)
         self.btn_login.setEnabled(False)
+        self.btn_create.setEnabled(False)
         self.inp_email.setEnabled(False)
         self.inp_pass.setEnabled(False)
 
-        # Ejecutar en thread separado
+        # Crear hilo y conectar señal
         self.login_thread = LoginWorker(self.controller, email, password)
         self.login_thread.login_resultado.connect(self.on_login_completado)
         self.login_thread.start()
 
     def on_login_completado(self, ok, result):
-        """Callback cuando se completa el login"""
+        """Callback del hilo de login"""
+        print("🧠 [MAIN THREAD] Resultado del login:", ok, result)
+
+        # Restaurar interfaz
         self.progress.setVisible(False)
         self.btn_login.setEnabled(True)
+        self.btn_create.setEnabled(True)
         self.inp_email.setEnabled(True)
         self.inp_pass.setEnabled(True)
 
         if not ok:
-            QMessageBox.critical(self, "❌ Error de Autenticación", str(result))
+            QMessageBox.warning(self, "❌ Error de inicio", str(result))
             return
 
-        QMessageBox.information(self, "✅ Bienvenido",
-                                f"¡Hola {result.get('nombre', 'Usuario')} 👋!\n\nAcceso concedido al sistema.")
-        self.accept()
+        QMessageBox.information(
+            self,
+            "✅ Bienvenido",
+            f"Hola {result.get('nombre', 'Usuario')} 👋\nAcceso concedido al sistema."
+        )
+
+        # Retrasar cierre para evitar colisión con el hilo
+        QTimer.singleShot(300, lambda: self.done(1))
 
     def recuperar_password(self, link=None):
         """Envía enlace de recuperación por correo"""

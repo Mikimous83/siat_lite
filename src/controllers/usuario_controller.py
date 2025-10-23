@@ -38,12 +38,17 @@ class UsuarioController:
 
     # ---------- Login ----------
     def login(self, email, password):
+        """Evalúa credenciales y devuelve (ok, resultado/mensaje)."""
         user = self.model.verificar_credenciales(email, password)
         if not user:
-            return False, "Credenciales inválidas."
-        if user[4] == 0:
-            return False, "Cuenta no confirmada. Revisa tu correo."
-        return True, {"id_usuario": user[0], "nombre": user[1], "apellido": user[2], "email": user[3]}
+            return False, "Credenciales inválidas o usuario no activo."
+
+        return True, {
+            "id_usuario": user[0],
+            "nombre": user[1],
+            "apellido": user[2],
+            "email": user[3]
+        }
 
     # ---------- Recuperación (envío de link) ----------
     def solicitar_reset(self, email: str):
